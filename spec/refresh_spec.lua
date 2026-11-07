@@ -156,6 +156,47 @@ describe("Refresh Module", function()
     assert.is_false(calledArgs[2].bank)
   end)
 
+  it("recalculates crate target dimming on activation and cancellation without rereading bags", function()
+    local savedSpell = _G.C_Spell
+    local savedBank = addon.atBank
+    local savedRequest = refresh.RequestUpdate
+    local savedRegister = events.RegisterEvent
+    local targeting = false
+    local requests = {}
+    local callbacks = {}
+    finally(function()
+      _G.C_Spell = savedSpell
+      addon.atBank = savedBank
+      refresh.RequestUpdate = savedRequest
+      events.RegisterEvent = savedRegister
+    end)
+    -- Forever's live probe: true/true/16 while targeting; false/false/nil after canceling.
+    _G.C_Spell = { TargetSpellChecksItemCondition = function() return targeting end }
+    events.RegisterEvent = function(_, name, callback) callbacks[name] = callback end
+    refresh:OnEnable()
+    refresh.RequestUpdate = function(_, request) requests[#requests + 1] = request end
+    local event = callbacks.CURRENT_SPELL_CAST_CHANGED
+    assert.is_not_nil(event, "targeting must refresh even when no bag item changes")
+
+    targeting = true
+    event()
+    targeting = false
+    event()
+    assert.are.same({
+      { derive = true, backpack = true, bank = false, categoriesUnchanged = true },
+      { derive = true, backpack = true, bank = false, categoriesUnchanged = true },
+    }, requests)
+
+    event()
+    assert.are.equal(2, #requests, "ordinary spell changes after canceling need no refresh")
+    targeting = true
+    addon.atBank = true
+    event()
+    event()
+    assert.are.equal(4, #requests, "switching directly between crates refreshes their different targets")
+    assert.is_true(requests[3].bank, "the open bank refreshes too")
+  end)
+
   -- At PLAYER_LOGIN the client has not delivered the bags yet (a captured login read 20
   -- empty slots here), so OnEnable reads nothing: it holds the queue and the loader until
   -- the startup read (refresh-scheduler.md §8).

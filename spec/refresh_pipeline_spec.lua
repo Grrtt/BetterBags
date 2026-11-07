@@ -3263,6 +3263,42 @@ describe("Refresh pipeline (ProcessRefresh) data-phase correctness", function()
       assert.are.same({ "0_1", "0_2", "0_3", "0_4" }, distinct(categoryAsked), "a recalculation that may change them")
     end)
 
+    it("updates crate validity from the targeting event and clears it on cancellation", function()
+      threeItems()
+      local callback
+      local register = events.RegisterEvent
+      override(events, "RegisterEvent", function(self, name, fn)
+        if name == "CURRENT_SPELL_CAST_CHANGED" then callback = fn return end
+        register(self, name, fn)
+      end)
+      override(_G, "C_Spell", { TargetSpellChecksItemCondition = function() return itemContext == 16 end })
+      -- Mirror Forever's ItemUtil.lua CheckItemCondition branch. The client decides
+      -- validity; no item names, tooltip parsing, or crate-specific lists are involved.
+      override(_G.ItemButtonUtil, "GetItemContextMatchResultForItem", function(location)
+        if itemContext ~= 16 then return 0 end
+        local _, slot = location:GetBagAndSlot()
+        return slot == 2 and 1 or 2
+      end)
+      refresh:OnEnable()
+      assert.is_function(callback)
+      -- Keep the real scheduler's request and pipeline, with its startup hold released.
+      refresh._held = false
+      override(_G.C_Timer, "After", function(delay, fn) if delay == 0 then fn() end end)
+      local function result(slot)
+        return items.slotInfo[BACKPACK].itemsBySlotKey[slot].itemContextMatchResult
+      end
+      itemContext = 16
+      callback()
+      assert.equal(1, result("0_2"), "the material the crate accepts stays bright")
+      assert.equal(2, result("0_1"), "a material it rejects dims")
+      assert.equal(2, result("0_3"))
+      itemContext = nil
+      callback()
+      assert.equal(0, result("0_1"), "canceling clears the cached mismatch")
+      assert.equal(0, result("0_2"))
+      assert.equal(0, result("0_3"))
+    end)
+
     it("works grey-out out again only when the item context changes", function()
       threeItems()
       mockContainer[0][4] = pile(404, "g404", 1)

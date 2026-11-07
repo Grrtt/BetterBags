@@ -12,6 +12,7 @@ The Data module handles:
 - Equipment set tracking
 - Item binding information
 - Refresh and update coordination
+- Crate targeting dimming: when a spell checks item conditions, target changes recalculate item context results from the committed inventory. Blizzard's validity check decides which items dim. Canceling or completing targeting clears that temporary state; no crate item list or tooltip parsing is needed.
 - Item stacking logic
 - Slot management
 

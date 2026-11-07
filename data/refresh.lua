@@ -542,6 +542,25 @@ function refresh:_RunUnit(request)
 end
 
 function refresh:OnEnable()
+  -- A crate changes which items fit without changing any bag slot. Recalculate on
+  -- every item-condition target change, including switching crates and canceling.
+  local spell = _G.C_Spell
+  if spell and spell.TargetSpellChecksItemCondition then
+    local wasTargeting = spell.TargetSpellChecksItemCondition()
+    events:RegisterEvent('CURRENT_SPELL_CAST_CHANGED', function()
+      local targeting = spell.TargetSpellChecksItemCondition()
+      local changed = targeting or wasTargeting
+      wasTargeting = targeting
+      if not changed then return end
+      self:RequestUpdate({
+        derive = true,
+        backpack = true,
+        bank = addon.atBank == true,
+        categoriesUnchanged = true,
+      })
+    end)
+  end
+
   local itemLoader = addon:GetModule('ItemLoader')
   itemLoader:TellMeWhenABagIsUpdated(function(updatedBags)
     local backpackChanged = false
